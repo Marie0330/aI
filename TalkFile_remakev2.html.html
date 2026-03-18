@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>코파일럿 — 드라이빙 AI (v2.5)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  /* [기존 클로드 디자인 스타일 유지] */
+  :root {
+    --bg: #0a0c10; --surface: #12151c; --surface2: #1a1f2b;
+    --border: rgba(255,255,255,0.07); --text: #e8eaf0; --muted: #5a6070;
+    --gemini-color: #4285f4; --listen-color: #34d399; --think-color: #a78bfa;
+    --speak-color: #60a5fa; --accent: #34d399;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body { background: var(--bg); color: var(--text); font-family: 'Noto Sans KR', sans-serif; height: 100dvh; overflow: hidden; display: flex; flex-direction: column; }
+  .screen { display: none; flex-direction: column; height: 100dvh; }
+  .screen.active { display: flex; }
+  .drive-topbar { width: 100%; display: flex; align-items: center; justify-content: space-between; padding: 18px 28px 0; }
+  .ai-badge { display: flex; align-items: center; gap: 8px; padding: 6px 14px; border-radius: 20px; border: 1px solid var(--border); background: var(--surface); font-family: 'DM Mono', monospace; font-size: 12px; color: var(--gemini-color); }
+  .ai-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .drive-center { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 32px; }
+  .state-orb { width: 160px; height: 160px; border-radius: 50%; background: var(--surface2); border: 2px solid var(--border); display: flex; flex-direction: column; align-items: center; justify-content: center; transition: all 0.4s ease; cursor: pointer; }
+  .state-orb.listening { border-color: var(--listen-color); box-shadow: 0 0 20px rgba(52,211,153,0.2); }
+  .state-orb.thinking { border-color: var(--think-color); }
+  .state-orb.speaking { border-color: var(--speak-color); }
+  .current-text { font-size: 16px; color: var(--text); text-align: center; max-width: 85%; line-height: 1.6; min-height: 60px; }
+  .btn-settings { background: none; border: none; font-size: 20px; cursor: pointer; }
+  .api-input { width: 100%; background: var(--bg); border: 1px solid var(--border); padding: 12px; color: var(--text); border-radius: 8px; margin-top: 8px; }
+  .save-btn { width: 100%; padding: 15px; background: var(--accent); border: none; border-radius: 8px; font-weight: bold; margin-top: 20px; cursor: pointer; }
+</style>
+</head>
+<body>
+
+<div id="drive-screen" class="screen active">
+  <div class="drive-topbar">
+    <div class="ai-badge">
+      <span class="ai-dot"></span>
+      <span id="model-label">Gemini 1.5 Flash</span>
+    </div>
+    <button class="btn-settings" onclick="showScreen('settings-screen')">⚙️</button>
+  </div>
+
+  <div class="drive-center">
+    <div id="state-orb" class="state-orb" onclick="toggleMic()">
+      <div id="orb-icon" style="font-size: 40px;">🎙️</div>
+      <div id="orb-label" style="font-size: 12px; margin-top:8px; color:var(--muted)">탭하여 시작</div>
+    </div>
+    <div class="current-text" id="current-text">운전 중 아이디어를 말씀해주세요</div>
+  </div>
+</div>
+
+<div id="settings-screen" class="screen" style="padding: 30px;">
+  <h2 style="margin-bottom:20px;">시스템 설정</h2>
+  <div style="margin-bottom:20px;">
+    <label style="font-size:12px; color:var(--muted)">GEMINI API KEY</label>
+    <input type="password" id="api-key" class="api-input" placeholder="AIza... 입력하세요">
+  </div>
+  <div style="margin-bottom:20px;">
+    <label style="font-size:12px; color:var(--muted)">청음 교정 모드</label>
+    <select id="correction-mode" class="api-input">
+      <option value="on">사용함 (AI가 문장 다듬기)</option>
+      <option value="off">사용 안 함 (빠른 응답)</option>
+    </select>
+  </div>
+  <button class="save-btn" onclick="showScreen('drive-screen')">설정 저장 후 복귀</button>
+</div>
+
+<script>
+const state = {
+  mode: 'idle',
+  recognition: null,
+  synth: window.speechSynthesis,
+};
+
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+function updateUI(mode, text, icon) {
+  state.mode = mode;
+  const orb = document.getElementById('state-orb');
+  orb.className = 'state-orb ' + mode;
+  document.getElementById('orb-icon').innerText = icon;
+  document.getElementById('current-text').innerText = text;
+  
+  const labels = { idle: '탭하여 시작', listening: '듣고 있어요', thinking: '생각 중...', speaking: '답변 중' };
+  document.getElementById('orb-label').innerText = labels[mode] || '';
+}
+
+function toggleMic() {
+  if (state.mode === 'listening') { stopListening(); return; }
+  if (state.mode === 'speaking' || state.mode === 'thinking') { 
+    state.synth.cancel(); 
+    if(state.recognition) state.recognition.stop();
+    updateUI('idle', '운전 중 아이디어를 말씀해주세요', '🎙️'); 
+    return; 
+  }
+  startListening();
+}
+
+function startListening() {
+  const Speech = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!Speech) { alert("브라우저가 음성 인식을 지원하지 않습니다."); return; }
+
+  state.recognition = new Speech();
+  state.recognition.lang = 'ko-KR';
+  state.recognition.onstart = () => updateUI('listening', '말씀해 주세요...', '👂');
+  
+  state.recognition.onresult = (e) => {
+    const text = e.results[0][0].transcript;
+    handleQuery(text);
+  };
+
+  state.recognition.onerror = () => updateUI('idle', '인식에 실패했습니다. 다시 시도하세요.', '❌');
+  state.recognition.start();
+}
+
+function stopListening() {
+  if (state.recognition) state.recognition.stop();
+}
+
+async function handleQuery(userText) {
+  const apiKey = document.getElementById('api-key').value;
+  if (!apiKey) { alert("설정에서 API 키를 먼저 입력해주세요."); updateUI('idle', '설정이 필요합니다', '⚙️'); return; }
+
+  updateUI('thinking', '분석 중입니다...', '🧠');
+
+  try {
+    let finalPrompt = userText;
+    const isCorrectionOn = document.getElementById('correction-mode').value === 'on';
+
+    // 1단계: 청음 교정 (선택 사항)
+    if (isCorrectionOn) {
+      const correctionPrompt = `너는 STT 교정 비서야. 다음 문장은 운전 중에 인식된 거라 오타가 많을 수 있어. 문맥을 파악해서 자연스러운 문장으로 고쳐줘. 다른 설명 없이 교정된 문장만 딱 출력해. 문장: "${userText}"`;
+      finalPrompt = await callGemini(apiKey, correctionPrompt);
+    }
+
+    // 2단계: 메인 답변 생성
+    const mainSystem = "너는 운전 중인 사용자의 비서야. 답변은 반드시 2문장 이내로, 친절한 구어체로 짧게 해줘.";
+    const answer = await callGemini(apiKey, mainSystem + "\n질문: " + finalPrompt);
+
+    updateUI('speaking', answer, '🔊');
+    speak(answer);
+  } catch (err) {
+    console.error(err);
+    updateUI('idle', '오류가 발생했습니다. 키를 확인하세요.', '⚠️');
+  }
+}
+
+async function callGemini(key, prompt) {
+  // 호출 URL 및 모델 규격 수정 (Gemini 1.5 Flash 최신 엔드포인트)
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${key}`;
+  
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: { temperature: 0.7, maxOutputTokens: 200 }
+    })
+  });
+
+  if (!response.ok) throw new Error('API 호출 실패');
+  
+  const data = await response.json();
+  return data.candidates[0].content.parts[0].text;
+}
+
+function speak(text) {
+  state.synth.cancel();
+  const utter = new SpeechSynthesisUtterance(text);
+  utter.lang = 'ko-KR';
+  utter.onend = () => updateUI('idle', '운전 중 아이디어를 말씀해주세요', '🎙️');
+  state.synth.speak(utter);
+}
+</script>
+</body>
+</html>
