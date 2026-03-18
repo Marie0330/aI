@@ -1,0 +1,1368 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>코파일럿 — 드라이빙 AI</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0c10;
+    --surface: #12151c;
+    --surface2: #1a1f2b;
+    --border: rgba(255,255,255,0.07);
+    --text: #e8eaf0;
+    --muted: #5a6070;
+    --gemini-color: #4285f4;
+    --claude-color: #c96a2e;
+    --listen-color: #34d399;
+    --think-color: #a78bfa;
+    --speak-color: #60a5fa;
+    --accent: #34d399;
+    --danger: #f87171;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Noto Sans KR', sans-serif;
+    height: 100dvh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── SCREENS ── */
+  .screen { display: none; flex-direction: column; height: 100dvh; }
+  .screen.active { display: flex; }
+
+  /* ══════════════════════════════
+     DRIVING SCREEN (메인 뷰)
+  ══════════════════════════════ */
+  #drive-screen {
+    background: var(--bg);
+    align-items: center;
+    justify-content: space-between;
+    padding: 0;
+  }
+
+  /* 상단 상태바 */
+  .drive-topbar {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 28px 0;
+  }
+
+  .ai-badge {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 14px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.03em;
+    transition: all 0.3s ease;
+  }
+  .ai-badge.gemini { color: var(--gemini-color); border-color: rgba(66,133,244,0.3); }
+  .ai-badge.claude { color: var(--claude-color); border-color: rgba(201,106,46,0.3); }
+
+  .ai-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+
+  .location-pill {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border-radius: 20px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    font-size: 11px;
+    color: var(--muted);
+    font-family: 'DM Mono', monospace;
+  }
+
+  .settings-btn {
+    background: none;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    padding: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    transition: color 0.2s;
+  }
+  .settings-btn:hover { color: var(--text); }
+
+  /* 중앙 상태 표시 영역 */
+  .drive-center {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 32px;
+    width: 100%;
+  }
+
+  /* 상태 오브 */
+  .state-orb-wrapper {
+    position: relative;
+    width: 200px;
+    height: 200px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .state-orb {
+    width: 160px;
+    height: 160px;
+    border-radius: 50%;
+    background: var(--surface2);
+    border: 2px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    transition: all 0.4s ease;
+    position: relative;
+    cursor: pointer;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  .state-orb:active { transform: scale(0.96); }
+
+  /* 링 애니메이션 */
+  .orb-ring {
+    position: absolute;
+    border-radius: 50%;
+    border: 1.5px solid currentColor;
+    opacity: 0;
+    animation: none;
+  }
+
+  @keyframes ring-expand {
+    0% { width: 160px; height: 160px; opacity: 0.6; }
+    100% { width: 210px; height: 210px; opacity: 0; }
+  }
+
+  .state-orb.listening {
+    border-color: rgba(52,211,153,0.5);
+    box-shadow: 0 0 40px rgba(52,211,153,0.15);
+  }
+  .state-orb.listening .orb-ring {
+    color: var(--listen-color);
+    animation: ring-expand 1.4s ease-out infinite;
+  }
+  .state-orb.listening .orb-ring:nth-child(2) { animation-delay: 0.5s; }
+
+  .state-orb.thinking {
+    border-color: rgba(167,139,250,0.5);
+    box-shadow: 0 0 40px rgba(167,139,250,0.12);
+  }
+
+  .state-orb.speaking {
+    border-color: rgba(96,165,250,0.5);
+    box-shadow: 0 0 40px rgba(96,165,250,0.12);
+  }
+
+  .state-orb.idle {
+    border-color: var(--border);
+    box-shadow: none;
+  }
+
+  .orb-icon {
+    font-size: 36px;
+    line-height: 1;
+    transition: all 0.3s ease;
+  }
+
+  .orb-label {
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    font-family: 'DM Mono', monospace;
+    transition: all 0.3s ease;
+  }
+
+  .state-idle .orb-icon::before { content: "◉"; color: var(--muted); }
+  .state-idle .orb-label { color: var(--muted); }
+
+  .state-listening .orb-icon::before { content: "◎"; color: var(--listen-color); }
+  .state-listening .orb-label { color: var(--listen-color); }
+
+  .state-thinking .orb-icon::before { content: "◈"; color: var(--think-color); }
+  .state-thinking .orb-label { color: var(--think-color); }
+
+  .state-speaking .orb-icon::before { content: "◈"; color: var(--speak-color); }
+  .state-speaking .orb-label { color: var(--speak-color); }
+
+  /* 웨이브폼 (음성 출력 중) */
+  .waveform {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    height: 28px;
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+  .waveform.active { opacity: 1; }
+  .wave-bar {
+    width: 3px;
+    background: var(--speak-color);
+    border-radius: 2px;
+    height: 4px;
+    transition: height 0.1s;
+  }
+  @keyframes wave1 { 0%,100%{height:4px} 50%{height:22px} }
+  @keyframes wave2 { 0%,100%{height:4px} 50%{height:16px} }
+  @keyframes wave3 { 0%,100%{height:4px} 50%{height:28px} }
+  .waveform.active .wave-bar:nth-child(1) { animation: wave2 0.8s ease infinite 0s; }
+  .waveform.active .wave-bar:nth-child(2) { animation: wave3 0.8s ease infinite 0.1s; }
+  .waveform.active .wave-bar:nth-child(3) { animation: wave1 0.8s ease infinite 0.2s; }
+  .waveform.active .wave-bar:nth-child(4) { animation: wave3 0.8s ease infinite 0.05s; }
+  .waveform.active .wave-bar:nth-child(5) { animation: wave2 0.8s ease infinite 0.15s; }
+  .waveform.active .wave-bar:nth-child(6) { animation: wave1 0.8s ease infinite 0.25s; }
+  .waveform.active .wave-bar:nth-child(7) { animation: wave3 0.8s ease infinite 0.1s; }
+
+  /* 현재 텍스트 미리보기 */
+  .current-text {
+    font-size: 14px;
+    color: var(--muted);
+    text-align: center;
+    max-width: 300px;
+    line-height: 1.6;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 20px;
+    font-weight: 300;
+    transition: color 0.3s;
+  }
+
+  /* 하단 컨트롤 */
+  .drive-bottom {
+    width: 100%;
+    padding: 20px 28px 36px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .main-controls {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+  }
+
+  .ctrl-btn {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    border-radius: 50%;
+    width: 52px; height: 52px;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    font-size: 18px;
+    transition: all 0.2s;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  .ctrl-btn:active { transform: scale(0.93); background: var(--surface2); }
+  .ctrl-btn.danger:active { border-color: rgba(248,113,113,0.4); color: var(--danger); }
+
+  .mic-btn {
+    width: 72px; height: 72px;
+    border-radius: 50%;
+    background: var(--surface2);
+    border: 2px solid var(--accent);
+    color: var(--accent);
+    font-size: 26px;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    -webkit-user-select: none;
+    user-select: none;
+    position: relative;
+    box-shadow: 0 0 0 0 rgba(52,211,153,0);
+  }
+  .mic-btn.recording {
+    background: rgba(52,211,153,0.12);
+    border-color: var(--listen-color);
+    box-shadow: 0 0 0 8px rgba(52,211,153,0.1);
+    animation: mic-pulse 1.2s ease-in-out infinite;
+  }
+  @keyframes mic-pulse {
+    0%,100% { box-shadow: 0 0 0 0 rgba(52,211,153,0.2); }
+    50% { box-shadow: 0 0 0 14px rgba(52,211,153,0.05); }
+  }
+  .mic-btn:active { transform: scale(0.94); }
+
+  /* 빠른 전환 AI 버튼 */
+  .quick-switch {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+  }
+
+  .switch-ai-btn {
+    flex: 1;
+    max-width: 140px;
+    padding: 10px 0;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    font-size: 12px;
+    font-family: 'DM Mono', monospace;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+    letter-spacing: 0.04em;
+    -webkit-user-select: none;
+    user-select: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+  .switch-ai-btn.active-gemini {
+    border-color: rgba(66,133,244,0.5);
+    background: rgba(66,133,244,0.08);
+    color: var(--gemini-color);
+  }
+  .switch-ai-btn.active-claude {
+    border-color: rgba(201,106,46,0.5);
+    background: rgba(201,106,46,0.08);
+    color: var(--claude-color);
+  }
+  .switch-ai-btn:not(.active-gemini):not(.active-claude) { color: var(--muted); }
+  .switch-ai-btn:active { transform: scale(0.97); }
+
+  /* ══════════════════════════════
+     MAIN / HOME SCREEN
+  ══════════════════════════════ */
+  #home-screen {
+    background: var(--bg);
+    overflow: hidden;
+  }
+
+  .home-topbar {
+    padding: 20px 24px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+
+  .app-title {
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+  .app-title span {
+    color: var(--accent);
+  }
+
+  .topbar-actions {
+    display: flex;
+    gap: 8px;
+  }
+
+  .icon-btn {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    width: 36px; height: 36px;
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    font-size: 14px;
+    transition: all 0.2s;
+  }
+  .icon-btn:active { background: var(--surface2); color: var(--text); }
+
+  .drive-start-btn {
+    margin: 0 24px;
+    padding: 16px;
+    background: rgba(52,211,153,0.1);
+    border: 1px solid rgba(52,211,153,0.3);
+    border-radius: 16px;
+    color: var(--accent);
+    font-size: 15px;
+    font-weight: 700;
+    font-family: 'Noto Sans KR', sans-serif;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    flex-shrink: 0;
+    margin-top: 16px;
+    letter-spacing: -0.01em;
+  }
+  .drive-start-btn:active { transform: scale(0.98); background: rgba(52,211,153,0.15); }
+
+  /* AI 선택 카드 */
+  .ai-selector {
+    padding: 0 24px;
+    flex-shrink: 0;
+    margin-top: 4px;
+  }
+
+  .section-label {
+    font-size: 10px;
+    font-family: 'DM Mono', monospace;
+    color: var(--muted);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+  }
+
+  .ai-cards {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+
+  .ai-card {
+    padding: 14px 16px;
+    border-radius: 14px;
+    border: 1.5px solid var(--border);
+    background: var(--surface);
+    cursor: pointer;
+    transition: all 0.2s;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  .ai-card.selected-gemini {
+    border-color: rgba(66,133,244,0.5);
+    background: rgba(66,133,244,0.08);
+  }
+  .ai-card.selected-claude {
+    border-color: rgba(201,106,46,0.5);
+    background: rgba(201,106,46,0.08);
+  }
+  .ai-card:active { transform: scale(0.97); }
+
+  .ai-card-name {
+    font-size: 13px;
+    font-weight: 700;
+    margin-bottom: 2px;
+    font-family: 'DM Mono', monospace;
+  }
+  .ai-card.selected-gemini .ai-card-name { color: var(--gemini-color); }
+  .ai-card.selected-claude .ai-card-name { color: var(--claude-color); }
+  .ai-card:not(.selected-gemini):not(.selected-claude) .ai-card-name { color: var(--muted); }
+
+  .ai-card-desc {
+    font-size: 11px;
+    color: var(--muted);
+    line-height: 1.4;
+    font-weight: 300;
+  }
+
+  .ai-card-check {
+    font-size: 10px;
+    margin-top: 6px;
+    font-family: 'DM Mono', monospace;
+  }
+  .ai-card.selected-gemini .ai-card-check { color: var(--gemini-color); }
+  .ai-card.selected-claude .ai-card-check { color: var(--claude-color); }
+  .ai-card:not(.selected-gemini):not(.selected-claude) .ai-card-check { color: transparent; }
+
+  /* 대화 히스토리 */
+  .chat-section {
+    flex: 1;
+    padding: 0 24px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    margin-top: 16px;
+  }
+
+  .chat-scroll {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding-bottom: 16px;
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .chat-scroll::-webkit-scrollbar { display: none; }
+
+  .chat-bubble {
+    max-width: 88%;
+    padding: 10px 14px;
+    border-radius: 14px;
+    font-size: 13px;
+    line-height: 1.6;
+    font-weight: 300;
+  }
+
+  .chat-bubble.user {
+    align-self: flex-end;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-bottom-right-radius: 4px;
+  }
+
+  .chat-bubble.ai {
+    align-self: flex-start;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-bottom-left-radius: 4px;
+  }
+
+  .chat-bubble.ai .bubble-ai-tag {
+    font-size: 9px;
+    font-family: 'DM Mono', monospace;
+    color: var(--muted);
+    margin-bottom: 4px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .chat-bubble.ai.gemini .bubble-ai-tag { color: var(--gemini-color); }
+  .chat-bubble.ai.claude .bubble-ai-tag { color: var(--claude-color); }
+
+  .empty-chat {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    color: var(--muted);
+    padding-bottom: 20px;
+  }
+  .empty-chat-icon { font-size: 32px; opacity: 0.3; }
+  .empty-chat-text { font-size: 13px; font-weight: 300; }
+
+  /* ══════════════════════════════
+     SETTINGS SCREEN
+  ══════════════════════════════ */
+  #settings-screen {
+    background: var(--bg);
+    overflow: hidden;
+  }
+
+  .settings-topbar {
+    padding: 20px 24px 16px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+
+  .back-btn {
+    background: none;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 18px;
+    display: flex; align-items: center;
+    transition: color 0.2s;
+  }
+  .back-btn:active { color: var(--text); }
+
+  .settings-title {
+    font-size: 16px;
+    font-weight: 700;
+  }
+
+  .settings-scroll {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .settings-scroll::-webkit-scrollbar { display: none; }
+
+  .settings-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .settings-group-label {
+    font-size: 10px;
+    font-family: 'DM Mono', monospace;
+    color: var(--muted);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+
+  .settings-row {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px 16px;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .settings-row-info {
+    flex: 1;
+  }
+
+  .settings-row-label {
+    font-size: 14px;
+    font-weight: 500;
+    margin-bottom: 2px;
+  }
+
+  .settings-row-desc {
+    font-size: 12px;
+    color: var(--muted);
+    line-height: 1.5;
+    font-weight: 300;
+  }
+
+  /* 토글 */
+  .toggle {
+    width: 42px; height: 24px;
+    background: var(--surface2);
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    position: relative;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background 0.3s;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  .toggle.on {
+    background: var(--accent);
+    border-color: var(--accent);
+  }
+  .toggle::after {
+    content: '';
+    position: absolute;
+    top: 3px; left: 3px;
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    background: var(--muted);
+    transition: all 0.3s;
+  }
+  .toggle.on::after {
+    left: calc(100% - 19px);
+    background: #fff;
+  }
+
+  /* API 키 입력 */
+  .api-input {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    outline: none;
+    margin-top: 8px;
+    transition: border-color 0.2s;
+  }
+  .api-input:focus { border-color: rgba(52,211,153,0.4); }
+  .api-input::placeholder { color: var(--muted); }
+
+  /* 프롬프트 textarea */
+  .prompt-textarea {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    color: var(--text);
+    font-family: 'Noto Sans KR', sans-serif;
+    font-size: 12px;
+    font-weight: 300;
+    outline: none;
+    resize: none;
+    line-height: 1.6;
+    margin-top: 8px;
+    min-height: 100px;
+    transition: border-color 0.2s;
+  }
+  .prompt-textarea:focus { border-color: rgba(52,211,153,0.4); }
+
+  /* 상태 표시 바 (드라이브 화면 하단) */
+  .status-bar {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding-bottom: 4px;
+  }
+
+  .status-dot {
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: var(--muted);
+    opacity: 0.4;
+    transition: all 0.3s;
+  }
+  .status-dot.active { opacity: 1; }
+  .status-dot.listen { background: var(--listen-color); }
+  .status-dot.think { background: var(--think-color); }
+  .status-dot.speak { background: var(--speak-color); }
+
+  /* 위치 정보 토스트 */
+  .location-toast {
+    position: fixed;
+    bottom: 120px;
+    left: 50%;
+    transform: translateX(-50%) translateY(20px);
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 8px 18px;
+    font-size: 12px;
+    color: var(--muted);
+    font-family: 'DM Mono', monospace;
+    opacity: 0;
+    transition: all 0.3s ease;
+    pointer-events: none;
+    white-space: nowrap;
+  }
+  .location-toast.visible {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+
+  /* 생각 중 점 애니메이션 */
+  @keyframes thinking-dot {
+    0%,80%,100% { opacity: 0.2; }
+    40% { opacity: 1; }
+  }
+  .thinking-dots span {
+    display: inline-block;
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: var(--think-color);
+    margin: 0 2px;
+    animation: thinking-dot 1.2s ease infinite;
+  }
+  .thinking-dots span:nth-child(2) { animation-delay: 0.2s; }
+  .thinking-dots span:nth-child(3) { animation-delay: 0.4s; }
+</style>
+</head>
+<body>
+
+<!-- ── 드라이빙 화면 ── -->
+<div id="drive-screen" class="screen active">
+
+  <div class="drive-topbar">
+    <div id="drive-ai-badge" class="ai-badge gemini">
+      <span class="ai-dot"></span>
+      <span id="drive-ai-name">Gemini</span>
+    </div>
+
+    <div class="location-pill">
+      <span>📍</span>
+      <span id="location-text">위치 확인 중</span>
+    </div>
+
+    <button class="settings-btn" onclick="showScreen('home-screen')">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+        <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
+      </svg>
+    </button>
+  </div>
+
+  <div class="drive-center">
+
+    <div class="state-orb-wrapper">
+      <div class="orb-ring"></div>
+      <div class="orb-ring"></div>
+      <div id="state-orb" class="state-orb idle" onclick="toggleMic()">
+        <div class="orb-icon state-idle"></div>
+        <div class="orb-label state-idle" id="orb-label-text">탭하여 시작</div>
+      </div>
+    </div>
+
+    <div class="waveform" id="waveform">
+      <div class="wave-bar"></div>
+      <div class="wave-bar"></div>
+      <div class="wave-bar"></div>
+      <div class="wave-bar"></div>
+      <div class="wave-bar"></div>
+      <div class="wave-bar"></div>
+      <div class="wave-bar"></div>
+    </div>
+
+    <div class="current-text" id="current-text">탭하면 바로 질문할 수 있어요</div>
+
+  </div>
+
+  <div class="drive-bottom">
+    <div class="main-controls">
+      <button class="ctrl-btn danger" onclick="clearLast()" title="마지막 대화 삭제">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.62"/>
+        </svg>
+      </button>
+
+      <button class="mic-btn" id="mic-btn" onclick="toggleMic()">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+          <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+          <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+          <line x1="12" y1="19" x2="12" y2="23"/>
+          <line x1="8" y1="23" x2="16" y2="23"/>
+        </svg>
+      </button>
+
+      <button class="ctrl-btn" onclick="stopSpeaking()" title="답변 중지">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+          <rect x="6" y="6" width="12" height="12" rx="2"/>
+        </svg>
+      </button>
+    </div>
+
+    <div class="quick-switch">
+      <button class="switch-ai-btn active-gemini" id="switch-gemini" onclick="setAI('gemini')">
+        <span>✦</span> Gemini
+      </button>
+      <button class="switch-ai-btn" id="switch-claude" onclick="setAI('claude')">
+        <span>◆</span> Claude
+      </button>
+    </div>
+
+    <div class="status-bar">
+      <div class="status-dot listen" id="dot-listen"></div>
+      <div class="status-dot think" id="dot-think"></div>
+      <div class="status-dot speak" id="dot-speak"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ── 홈 / 메인 화면 ── -->
+<div id="home-screen" class="screen">
+
+  <div class="home-topbar">
+    <div class="app-title">코파일럿<span>.</span></div>
+    <div class="topbar-actions">
+      <button class="icon-btn" onclick="showScreen('settings-screen')" title="설정">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <button class="drive-start-btn" onclick="showScreen('drive-screen')">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+      <polygon points="5 3 19 12 5 21 5 3"/>
+    </svg>
+    드라이빙 모드 시작
+  </button>
+
+  <div class="ai-selector" style="margin-top:20px;">
+    <div class="section-label">AI 선택</div>
+    <div class="ai-cards">
+      <div class="ai-card selected-gemini" id="card-gemini" onclick="setAI('gemini')">
+        <div class="ai-card-name">Gemini</div>
+        <div class="ai-card-desc">일반 대화 / 정보 검색 기본</div>
+        <div class="ai-card-check">● 현재 선택</div>
+      </div>
+      <div class="ai-card" id="card-claude" onclick="setAI('claude')">
+        <div class="ai-card-name">Claude</div>
+        <div class="ai-card-desc">심층 분석 / 아이디어 검토</div>
+        <div class="ai-card-check">● 현재 선택</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="chat-section">
+    <div class="section-label" style="padding-top:4px;">최근 대화</div>
+    <div class="chat-scroll" id="chat-history">
+      <div class="empty-chat" id="empty-state">
+        <div class="empty-chat-icon">◉</div>
+        <div class="empty-chat-text">아직 대화 내용이 없어요</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── 설정 화면 ── -->
+<div id="settings-screen" class="screen">
+
+  <div class="settings-topbar">
+    <button class="back-btn" onclick="showScreen('home-screen')">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+        <polyline points="15 18 9 12 15 6"/>
+      </svg>
+    </button>
+    <div class="settings-title">설정</div>
+  </div>
+
+  <div class="settings-scroll">
+
+    <div class="settings-group">
+      <div class="settings-group-label">API 키</div>
+      <div class="settings-row" style="flex-direction:column; align-items:stretch;">
+        <div class="settings-row-label">Gemini API Key</div>
+        <div class="settings-row-desc">Google AI Studio에서 발급</div>
+        <input class="api-input" type="password" id="gemini-key" placeholder="AIza...">
+      </div>
+      <div class="settings-row" style="flex-direction:column; align-items:stretch;">
+        <div class="settings-row-label">Claude API Key</div>
+        <div class="settings-row-desc">Anthropic Console에서 발급</div>
+        <input class="api-input" type="password" id="claude-key" placeholder="sk-ant-...">
+      </div>
+    </div>
+
+    <div class="settings-group">
+      <div class="settings-group-label">드라이빙 프롬프트</div>
+      <div class="settings-row" style="flex-direction:column; align-items:stretch;">
+        <div class="settings-row-label">기본 시스템 프롬프트</div>
+        <div class="settings-row-desc">모든 질문에 자동으로 앞에 붙는 지시문</div>
+        <textarea class="prompt-textarea" id="system-prompt">지금 나는 운전 중이야. 음성으로 답변이 출력되니까 반드시 핵심만 짧고 자연스러운 구어체로 답해줘. 불필요한 설명이나 나열은 빼고, 대화하듯 간결하게. 추가 설명이 필요하면 내가 물어볼게.</textarea>
+      </div>
+    </div>
+
+    <div class="settings-group">
+      <div class="settings-group-label">기능</div>
+      <div class="settings-row">
+        <div class="settings-row-info">
+          <div class="settings-row-label">위치 기반 컨텍스트</div>
+          <div class="settings-row-desc">현재 위치를 AI 질문에 자동으로 포함</div>
+        </div>
+        <div class="toggle on" id="toggle-location" onclick="toggleSetting('location')"></div>
+      </div>
+      <div class="settings-row">
+        <div class="settings-row-info">
+          <div class="settings-row-label">청음 교정 레이어</div>
+          <div class="settings-row-desc">STT 결과를 AI로 한번 더 교정 후 처리</div>
+        </div>
+        <div class="toggle on" id="toggle-correction" onclick="toggleSetting('correction')"></div>
+      </div>
+      <div class="settings-row">
+        <div class="settings-row-info">
+          <div class="settings-row-label">한국어 우선 인식</div>
+          <div class="settings-row-desc">음성 인식 언어를 한국어로 고정</div>
+        </div>
+        <div class="toggle on" id="toggle-korean" onclick="toggleSetting('korean')"></div>
+      </div>
+      <div class="settings-row">
+        <div class="settings-row-info">
+          <div class="settings-row-label">자동 전송</div>
+          <div class="settings-row-desc">말이 끊기면 자동으로 AI에 전송</div>
+        </div>
+        <div class="toggle on" id="toggle-auto" onclick="toggleSetting('auto')"></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- 위치 토스트 -->
+<div class="location-toast" id="location-toast">📍 위치 정보 포함됨</div>
+
+<script>
+// ─── 상태 관리 ───
+const state = {
+  currentAI: 'gemini',
+  mode: 'idle', // idle | listening | thinking | speaking
+  isRecording: false,
+  settings: {
+    location: true,
+    correction: true,
+    korean: true,
+    auto: true
+  },
+  location: null,
+  chatHistory: [],
+  recognition: null,
+  synth: window.speechSynthesis
+};
+
+// ─── 화면 전환 ───
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  if (id === 'drive-screen') startLocationWatch();
+}
+
+// ─── AI 전환 ───
+function setAI(ai) {
+  state.currentAI = ai;
+
+  // 드라이브 화면 배지
+  const badge = document.getElementById('drive-ai-badge');
+  const badgeName = document.getElementById('drive-ai-name');
+  badge.className = 'ai-badge ' + ai;
+  badgeName.textContent = ai === 'gemini' ? 'Gemini' : 'Claude';
+
+  // 드라이브 화면 스위치 버튼
+  document.getElementById('switch-gemini').className = 'switch-ai-btn' + (ai === 'gemini' ? ' active-gemini' : '');
+  document.getElementById('switch-claude').className = 'switch-ai-btn' + (ai === 'claude' ? ' active-claude' : '');
+
+  // 홈 화면 카드
+  document.getElementById('card-gemini').className = 'ai-card' + (ai === 'gemini' ? ' selected-gemini' : '');
+  document.getElementById('card-claude').className = 'ai-card' + (ai === 'claude' ? ' selected-claude' : '');
+}
+
+// ─── 상태 변경 ───
+function setMode(mode) {
+  state.mode = mode;
+  const orb = document.getElementById('state-orb');
+  const label = document.getElementById('orb-label-text');
+  const waveform = document.getElementById('waveform');
+  const currentText = document.getElementById('current-text');
+
+  orb.className = 'state-orb ' + mode;
+
+  // 아이콘/레이블 클래스 교체
+  const icon = orb.querySelector('.orb-icon');
+  const lbl = orb.querySelector('.orb-label');
+  icon.className = 'orb-icon state-' + mode;
+  lbl.className = 'orb-label state-' + mode;
+
+  // 점 상태 업데이트
+  document.getElementById('dot-listen').classList.toggle('active', mode === 'listening');
+  document.getElementById('dot-think').classList.toggle('active', mode === 'thinking');
+  document.getElementById('dot-speak').classList.toggle('active', mode === 'speaking');
+
+  // 웨이브폼
+  waveform.classList.toggle('active', mode === 'speaking');
+
+  const labels = {
+    idle: '탭하여 시작',
+    listening: '듣는 중',
+    thinking: '생각 중',
+    speaking: '답변 중'
+  };
+  lbl.textContent = labels[mode];
+
+  if (mode === 'thinking') {
+    currentText.innerHTML = '<span class="thinking-dots"><span></span><span></span><span></span></span>';
+  }
+}
+
+// ─── 마이크 토글 ───
+function toggleMic() {
+  if (state.mode === 'speaking') { stopSpeaking(); return; }
+  if (state.mode === 'listening') { stopListening(); return; }
+  if (state.mode === 'thinking') return;
+  startListening();
+}
+
+// ─── 음성 인식 ───
+function startListening() {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) {
+    simulateDemo();
+    return;
+  }
+
+  state.recognition = new SpeechRecognition();
+  state.recognition.lang = state.settings.korean ? 'ko-KR' : 'ko-KR';
+  state.recognition.interimResults = true;
+  state.recognition.continuous = false;
+
+  state.recognition.onstart = () => {
+    setMode('listening');
+    document.getElementById('current-text').textContent = '말씀해 주세요...';
+    document.getElementById('mic-btn').classList.add('recording');
+  };
+
+  state.recognition.onresult = (e) => {
+    const transcript = Array.from(e.results)
+      .map(r => r[0].transcript).join('');
+    document.getElementById('current-text').textContent = transcript;
+
+    if (e.results[e.results.length - 1].isFinal) {
+      if (state.settings.auto) {
+        stopListening();
+        processQuery(transcript);
+      }
+    }
+  };
+
+  state.recognition.onerror = () => {
+    resetToIdle();
+  };
+
+  state.recognition.onend = () => {
+    document.getElementById('mic-btn').classList.remove('recording');
+    if (state.mode === 'listening') resetToIdle();
+  };
+
+  state.recognition.start();
+}
+
+function stopListening() {
+  if (state.recognition) {
+    state.recognition.stop();
+    state.recognition = null;
+  }
+  document.getElementById('mic-btn').classList.remove('recording');
+}
+
+// ─── 쿼리 처리 ───
+async function processQuery(text) {
+  setMode('thinking');
+  document.getElementById('current-text').innerHTML = '<span class="thinking-dots"><span></span><span></span><span></span></span>';
+
+  // 위치 컨텍스트 구성
+  let locationCtx = '';
+  if (state.settings.location && state.location) {
+    locationCtx = `\n\n[현재 위치: 위도 ${state.location.lat.toFixed(4)}, 경도 ${state.location.lng.toFixed(4)}. 위치 관련 질문이면 이 정보를 참고해줘.]`;
+  }
+
+  const systemPrompt = document.getElementById('system-prompt').value;
+
+  // 청음 교정 레이어 (시뮬레이션 — 실제로는 API 선호출)
+  let correctedText = text;
+  if (state.settings.correction) {
+    correctedText = text; // 실 구현 시: correction API 호출
+  }
+
+  // 히스토리에 유저 메시지 추가
+  addChatBubble('user', correctedText);
+
+  // 위치 토스트
+  if (state.settings.location && state.location) {
+    showLocationToast();
+  }
+
+  try {
+    const apiKey = state.currentAI === 'gemini'
+      ? document.getElementById('gemini-key').value
+      : document.getElementById('claude-key').value;
+
+    let responseText = '';
+
+    if (!apiKey || apiKey.length < 10) {
+      // 데모 모드
+      responseText = getDemoResponse(correctedText);
+    } else if (state.currentAI === 'gemini') {
+      responseText = await callGemini(apiKey, systemPrompt + locationCtx, correctedText);
+    } else {
+      responseText = await callClaude(apiKey, systemPrompt + locationCtx, correctedText);
+    }
+
+    addChatBubble('ai', responseText, state.currentAI);
+    setMode('speaking');
+    document.getElementById('current-text').textContent = responseText;
+    speak(responseText);
+
+  } catch (err) {
+    const errMsg = '죄송해요, 응답을 받지 못했어요. 다시 시도해볼게요.';
+    addChatBubble('ai', errMsg, state.currentAI);
+    setMode('speaking');
+    speak(errMsg);
+  }
+}
+
+// ─── Gemini API ───
+async function callGemini(apiKey, system, userMsg) {
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        system_instruction: { parts: [{ text: system }] },
+        contents: [{ parts: [{ text: userMsg }] }]
+      })
+    }
+  );
+  const data = await res.json();
+  return data.candidates?.[0]?.content?.parts?.[0]?.text || '응답을 받지 못했어요.';
+}
+
+// ─── Claude API ───
+async function callClaude(apiKey, system, userMsg) {
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01'
+    },
+    body: JSON.stringify({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 300,
+      system,
+      messages: [{ role: 'user', content: userMsg }]
+    })
+  });
+  const data = await res.json();
+  return data.content?.[0]?.text || '응답을 받지 못했어요.';
+}
+
+// ─── TTS ───
+function speak(text) {
+  if (!state.synth) { onSpeakEnd(); return; }
+  state.synth.cancel();
+
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.lang = 'ko-KR';
+  utterance.rate = 1.05;
+  utterance.pitch = 1.0;
+
+  // 한국어 음성 선호
+  const voices = state.synth.getVoices();
+  const koVoice = voices.find(v => v.lang.startsWith('ko'));
+  if (koVoice) utterance.voice = koVoice;
+
+  utterance.onend = onSpeakEnd;
+  utterance.onerror = onSpeakEnd;
+
+  state.synth.speak(utterance);
+}
+
+function onSpeakEnd() {
+  resetToIdle();
+}
+
+function stopSpeaking() {
+  if (state.synth) state.synth.cancel();
+  resetToIdle();
+}
+
+function resetToIdle() {
+  setMode('idle');
+  document.getElementById('current-text').textContent = '탭하면 바로 질문할 수 있어요';
+  document.getElementById('mic-btn').classList.remove('recording');
+}
+
+// ─── 채팅 히스토리 ───
+function addChatBubble(role, text, ai = null) {
+  state.chatHistory.push({ role, text, ai });
+
+  const container = document.getElementById('chat-history');
+  const empty = document.getElementById('empty-state');
+  if (empty) empty.style.display = 'none';
+
+  const bubble = document.createElement('div');
+  bubble.className = 'chat-bubble ' + role + (ai ? ' ' + ai : '');
+
+  if (role === 'ai' && ai) {
+    const tag = document.createElement('div');
+    tag.className = 'bubble-ai-tag';
+    tag.textContent = ai === 'gemini' ? 'Gemini' : 'Claude';
+    bubble.appendChild(tag);
+  }
+
+  const content = document.createElement('div');
+  content.textContent = text;
+  bubble.appendChild(content);
+
+  container.appendChild(bubble);
+  container.scrollTop = container.scrollHeight;
+}
+
+function clearLast() {
+  const container = document.getElementById('chat-history');
+  const bubbles = container.querySelectorAll('.chat-bubble');
+  if (bubbles.length >= 2) {
+    bubbles[bubbles.length - 1].remove();
+    bubbles[bubbles.length - 2].remove();
+  }
+  resetToIdle();
+}
+
+// ─── 위치 추적 ───
+function startLocationWatch() {
+  if (!navigator.geolocation) return;
+
+  navigator.geolocation.watchPosition(pos => {
+    state.location = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+    document.getElementById('location-text').textContent =
+      `${pos.coords.latitude.toFixed(3)}, ${pos.coords.longitude.toFixed(3)}`;
+  }, () => {
+    document.getElementById('location-text').textContent = '위치 사용 불가';
+  }, { enableHighAccuracy: true });
+}
+
+function showLocationToast() {
+  const toast = document.getElementById('location-toast');
+  toast.classList.add('visible');
+  setTimeout(() => toast.classList.remove('visible'), 2000);
+}
+
+// ─── 토글 설정 ───
+function toggleSetting(key) {
+  state.settings[key] = !state.settings[key];
+  const el = document.getElementById('toggle-' + key);
+  el.classList.toggle('on', state.settings[key]);
+}
+
+// ─── 데모 응답 (API 키 없을 때) ───
+function getDemoResponse(text) {
+  const demos = [
+    '좋은 아이디어네요! 핵심은 사용자가 말을 마치는 순간 자동으로 AI에 전달하는 흐름이에요. 더 구체화해볼까요?',
+    '운전 중 아이디어를 놓치지 않으려면 짧게 핵심 키워드만 말해도 돼요. 나중에 홈 화면에서 전체 대화를 확인할 수 있어요.',
+    '위치 정보까지 포함되니까 근처 맛집이나 주유소 질문도 바로 할 수 있어요.',
+    '설정에서 API 키를 넣으면 실제 AI와 연결돼요. 지금은 데모 모드예요.'
+  ];
+  return demos[Math.floor(Math.random() * demos.length)];
+}
+
+// ─── 데모 시뮬레이션 (SpeechRecognition 없는 환경) ───
+function simulateDemo() {
+  const samples = [
+    '오늘 드라이브하면서 새 앱 아이디어가 떠올랐어',
+    '여기 근처에 괜찮은 커피숍 있을까',
+    '운전 중에 AI랑 대화하면 어떤 게 좋을까'
+  ];
+  const text = samples[Math.floor(Math.random() * samples.length)];
+
+  setMode('listening');
+  document.getElementById('mic-btn').classList.add('recording');
+  document.getElementById('current-text').textContent = '말씀해 주세요...';
+
+  setTimeout(() => {
+    document.getElementById('current-text').textContent = text;
+    setTimeout(() => {
+      document.getElementById('mic-btn').classList.remove('recording');
+      processQuery(text);
+    }, 1200);
+  }, 800);
+}
+
+// ─── 초기화 ───
+startLocationWatch();
+</script>
+</body>
+</html>
